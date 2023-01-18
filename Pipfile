@@ -1,0 +1,22 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+google-cloud-bigquery = "*"
+python-dateutil = "*"
+python-json-logger = "*"
+retry = "*"
+futures = "*"
+nltk = "*"
+pandas = "*"
+numpy = "*"
+db-dtypes = "*"
+matplotlib = "*"
+google-cloud-storage = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.9"
