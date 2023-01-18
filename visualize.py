@@ -5,58 +5,43 @@ from configparser import ConfigParser
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, dates as mdates
 from google.cloud import storage
 from libs.logger import Logger
 from libs.bigquery_client import BigQueryClient
 
 class TweetsVisualizer:
 
-    def __init__(self, conf, location):
+    def __init__(self, conf, location, key):
         """
         Init constructor
         """
         self.logger = Logger("./config/logger.ini", self.__class__.__name__)
         self.parser = ConfigParser(interpolation=None)
         self.parser.read(conf)
+        self.parser.read('config/plot_%s.ini' % key)
         self.location = location
+        self.key = key
         self.bq = BigQueryClient(conf)
 
     def __build_sql(self):
-        sql = """
-select
-  concat(year, '-', format('%02d', month)) ym,
-  tweets
-from (
-  select
-    extract(YEAR from `created_at`) year,
-    extract(MONTH from `created_at`) month,
-    count(1) tweets
-  from
-    `keio-sdm-masters-research.tweets.tweets_sentiment_v1`
-  where
-    location = '{location}'
-  group by
-    extract(YEAR from `created_at`),
-    extract(MONTH from `created_at`)
-)
-order by
-  year,
-  month
-""".format(location = self.location).strip()
+        sql = open("sql/%s.sql" % self.key).read()\
+            .format(location = self.location).strip()
         print(sql)
         self.logger.log.info(sql)
         return sql
 
     def __draw(self, result):
-        fig = plt.figure(figsize=(20.0, 8.0))
-        plt.title("Monthly amount of tweets from %s" % (self.location), fontsize=20)
-        plt.xlabel("month", fontsize=16)
-        plt.ylabel("# of tweets", fontsize=16)
+        fig = plt.figure(figsize=(20.0, 10.0))
+        plt.title(self.parser["PLOT"]["title"] % (self.location), fontsize=20)
+        plt.xlabel(self.parser["PLOT"]["xlabel"], fontsize=16)
+        plt.ylabel(self.parser["PLOT"]["ylabel"], fontsize=16)
         plt.grid()
-        plt.plot(result['ym'], result['tweets'])
-        plt.xticks(np.arange(min(result['ym']), max(result['ym']), np.timedelta64(6, 'M'), dtype='datetime64').astype(str), rotation=60)
-        filename = "%s_tweets.png" % (self.location)
+        xcolumn = self.parser["PLOT"]["xcolumn"]
+        ycolumn = self.parser["PLOT"]["ycolumn"]
+        plt.plot(result[xcolumn], result[ycolumn])
+        plt.xticks(np.arange(min(result[xcolumn]), max(result[xcolumn]), np.timedelta64(self.parser["PLOT"]["xinterval"], self.parser["PLOT"]["xunit"]), dtype='datetime64').astype(str), rotation=60)
+        filename = "%s_%s.png" % (self.location, self.key)
         plt.savefig(filename)
         with open(filename, mode="rb") as f:
             gcs = storage.Client()
@@ -82,8 +67,9 @@ if __name__ == "__main__":
         ARGPARSER = argparse.ArgumentParser(description="Analyze tweet sentiment")
         ARGPARSER.add_argument("--conf", required=True, help="Config file path")
         ARGPARSER.add_argument("--location", required=True, help="Location string")
+        ARGPARSER.add_argument("--key", required=True, help="key string correspoding to sql file")
         ARGS = ARGPARSER.parse_args()
-        ANALYZER = TweetsVisualizer(ARGS.conf, ARGS.location)
+        ANALYZER = TweetsVisualizer(ARGS.conf, ARGS.location, ARGS.key)
         ANALYZER.main()
     except Exception as ex:
         raise
